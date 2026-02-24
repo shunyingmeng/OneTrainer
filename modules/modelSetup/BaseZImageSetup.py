@@ -110,7 +110,7 @@ class BaseZImageSetup(
                 text_encoder_dropout_probability=config.text_encoder.dropout_probability,
             )
 
-            if config.cep_enabled:
+            if config.cep_enabled and not deterministic:
                 text_encoder_output = self._apply_conditional_embedding_perturbation(
                     text_encoder_output, config.cep_gamma, generator
                 )
