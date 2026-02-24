@@ -337,6 +337,11 @@ class ModelSetupDiffusionLossMixin(metaclass=ABCMeta):
                     pass
                 case LossWeight.SIGMA:
                     losses *= self.__sigma_loss_weight(data['timestep'], losses.device)
+                case LossWeight.MIN_SNR_GAMMA:
+                    sigmas = self.__sigmas[data['timestep']].to(losses.device)
+                    snr = (1.0 - sigmas) ** 2 / sigmas ** 2
+                    min_snr_gamma = torch.minimum(snr, torch.full_like(snr, config.loss_weight_strength))
+                    losses *= min_snr_gamma / (snr + 1.0)
                 case _:
                     raise NotImplementedError(f"Loss weight function {config.loss_weight_fn} not implemented for flow matching models")
 
