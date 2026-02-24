@@ -1,128 +1,40 @@
-# CLAUDE.md
+# Branch: dev/unified-prodigy-optimizer
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Unified Prodigy optimizer with per-group adaptive learning rates. Based on `master`.
 
-## Project Overview
+## Goal
 
-OneTrainer is a modular training framework for diffusion models. It supports multiple model architectures (SD 1.5/2.x/3.x, SDXL, FLUX, PixArt, Würstchen, Sana, Hunyuan Video, HiDream, Chroma, Qwen, Z-Image), training methods (full fine-tune, LoRA, embeddings, VAE fine-tune), and model formats (diffusers, ckpt, safetensors). It has both a GUI (CustomTkinter) and CLI mode.
+Unify `PRODIGY_ADV` and `PRODIGY_PLUS_SCHEDULE_FREE` into a single optimizer by adding per-parameter-group adaptive `d` (learning rate discovery). This branch implements the first step: `split_groups` support for Prodigy ADV.
 
-## Setup & Commands
+## Changes from master
 
-```bash
-# Install (creates venv automatically)
-./install.sh          # Linux/Mac
-install.bat           # Windows
+### Includes shared fixes (also in dev/enhance-and-fix)
+- Dynamic timestep shifting fix for Flux2 and Z-Image
+- Sampler timestep shift config support
+- CEP validation guard and scaling formula fix
+- Multi-level validation (high/mid/low timesteps)
+- Configurable deterministic timestep fraction
 
-# Activate venv manually
-source venv/bin/activate
+### Unique to this branch
+- **`ProdigyAdvSplitGroups`** (`modules/util/optimizer/prodigy_adv_split.py`): Subclass of `prodigy_optimizer.Prodigy` that gives each parameter group its own adaptive `d` value, allowing UNet, text encoders, etc. to independently discover optimal learning rates
+- **Optimizer wiring** (`modules/util/create.py`): Refactored `_create_prodigy_adv_optimizer()` to use `ProdigyAdvSplitGroups` when `split_groups=True`, with cleaner parameter group construction
+- **Enum registration** (`modules/util/optimizer_util.py`): Registered new optimizer class
 
-# Install dependencies
-pip install -r requirements.txt
+## Files Modified
 
-# Start GUI
-python scripts/train_ui.py
+- `modules/util/optimizer/prodigy_adv_split.py` — new file, 179 lines
+- `modules/util/create.py` — refactored optimizer creation (72 lines changed)
+- `modules/util/optimizer_util.py` — import registration
 
-# CLI training
-python scripts/train.py --config-path <path-to-json-config>
+## TODO
 
-# Other CLI scripts (all in scripts/)
-python scripts/convert_model.py --help
-python scripts/sample.py --help
-python scripts/generate_captions.py --help
-python scripts/generate_masks.py --help
-python scripts/calculate_loss.py --help
-```
+- [ ] Add schedule-free wrapper option to `ProdigyAdvSplitGroups`
+- [ ] Merge PRODIGY_PLUS_SCHEDULE_FREE functionality into the unified optimizer
+- [ ] Add UI toggle for split_groups in optimizer settings
+- [ ] Test with multi-TE models (SDXL, HiDream) to verify per-group d convergence
+- [ ] Consider deprecating separate PRODIGY_PLUS_SCHEDULE_FREE enum once unified
 
-## Code Quality
+## Architecture Notes
 
-Ruff is used for linting and formatting. Pre-commit hooks enforce style on commits.
-
-```bash
-# Install dev dependencies and hooks (run OUTSIDE venv)
-pip install -r requirements-dev.txt
-pre-commit install
-
-# Run linting manually
-ruff check .
-ruff check --fix .
-```
-
-Key ruff settings (in `pyproject.toml`):
-- Line length: 120
-- Import order: stdlib → first-party (`modules`) → mgds → torch → hf (diffusers/transformers) → third-party → local
-- Python ≥ 3.10
-
-## Architecture
-
-### Module System
-
-The codebase uses a **plugin factory pattern**. Each module type has a base class, and concrete implementations register themselves via `modules/util/factory.py`. The factory registry is populated at import time — `modules/util/create.py` calls `factory.import_dir()` to auto-discover all implementations under each module directory.
-
-The module types (each a subdirectory of `modules/`):
-
-| Module | Purpose | Base Class |
-|--------|---------|------------|
-| `model` | Holds weights, optimizers, embeddings | `BaseModel` |
-| `modelLoader` | Loads models from disk formats | `BaseModelLoader` |
-| `modelSaver` | Saves models to disk formats | `BaseModelSaver` |
-| `modelSetup` | Configures training (optimizer, device placement, predictions) | `BaseModelSetup` |
-| `modelSampler` | Generates samples during/after training | `BaseModelSampler` |
-| `dataLoader` | Loads training data using MGDS graph-based pipeline | `BaseDataLoader` |
-| `trainer` | Orchestrates the full training loop | `BaseTrainer` |
-| `ui` | GUI code (CustomTkinter tabs) | — |
-
-### Adding Support for a New Model
-
-Requires implementing classes in 6 module directories: `model`, `modelLoader`, `modelSaver`, `modelSetup`, `modelSampler`, `dataLoader`. Each implementation registers itself with the factory using `@factory.register(BaseClass, ModelType.X, TrainingMethod.Y)` decorators or explicit registration calls. Then wire it in `modules/util/create.py` and add the enum value to `ModelType` in `modules/util/enum/ModelType.py`.
-
-### Key Files
-
-- **`modules/util/create.py`** — Central factory that instantiates the correct module implementations based on `ModelType` and `TrainingMethod`. Also creates optimizers, LR schedulers, and noise schedulers.
-- **`modules/util/config/TrainConfig.py`** — The main configuration dataclass with all training parameters. Serializes to/from JSON. Supports versioned migrations.
-- **`modules/util/enum/`** — Enumerations that drive the factory system: `ModelType`, `TrainingMethod`, `Optimizer`, `DataType`, `NoiseScheduler`, `LearningRateScheduler`, etc.
-- **`modules/trainer/GenericTrainer.py`** — The main training loop implementation.
-- **`modules/util/factory.py`** — The plugin registry (register/get pattern).
-
-### Training Flow
-
-`scripts/train.py` → loads `TrainConfig` from JSON → `create_trainer()` → `GenericTrainer`:
-1. `model_loader.load()` — load model weights
-2. `model_setup.setup()` — configure optimizer, move to device
-3. Training loop: load batch → forward → backward → optimizer step → periodic sampling/backup
-4. `model_saver.save()` — save final model
-
-### Configuration
-
-Training is entirely config-driven via JSON files. The `training_presets/` directory contains pre-built configurations for various model types. The GUI produces and consumes these same JSON configs.
-
-### Scripts
-
-All user-facing entry points are in `scripts/`. Scripts contain no extra logic — they delegate entirely to modules.
-
-### External Dependencies
-
-- **MGDS** (`mgds` package) — Custom graph-based dataset library by the same author. Used for all data loading.
-- **diffusers** — Installed from git as an editable package for latest features.
-- **CustomTkinter** — GUI framework.
-
-## Training Configs (Test Fixtures)
-
-The `training_configs/` folder contains working config JSONs for quick smoke-testing of code changes:
-
-| File | Model | Notes |
-|------|-------|-------|
-| `chroma.json` | Chroma-HD (CHROMA_1) | dynamic_timestep_shifting=true |
-| `klein.json` | FLUX.2 Klein 9B (FLUX_2) | |
-| `illustrious.json` | Illustrious XL (SDXL) | Trains UNet + TE1 + TE2 |
-| `zimage.json` | Z-Image | Regex layer filter |
-
-All use PRODIGY_ADV optimizer with LoRA training and `split_groups: true`.
-
-**IMPORTANT: Any changes to files in `training_configs/` must be reviewed and approved by the user.** Do not modify these configs without explicit confirmation — they are known-good baselines for testing.
-
-## Git Remotes
-
-- `origin` — upstream Nerogar/OneTrainer (HTTPS, read-only)
-- `fork` — user's fork at `git@github-sy:shunyingmeng/OneTrainer.git` (SSH, push here)
-
-Always push to `fork`, not `origin`. The SSH host `github-sy` is configured in `~/.ssh/config` for the user's secondary GitHub account.
+- `ProdigyAdvSplitGroups` overrides `step()` to maintain separate `d` and `d_numerator`/`d_denom` accumulators per group, rather than the single global `d` in base Prodigy
+- The `create.py` refactor groups parameters by component (transformer, text_encoder_1, text_encoder_2, etc.) before passing to the optimizer, enabling meaningful per-group adaptation
