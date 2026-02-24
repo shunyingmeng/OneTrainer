@@ -519,6 +519,8 @@ OPTIMIZER_DEFAULT_PARAMETERS = {
         "alpha_grad": 100.0,
         "kourkoutas_beta": False,
         "k_warmup_steps": None,
+        "split_groups": False,
+        "split_groups_mean": False,
     },
     Optimizer.SIMPLIFIED_AdEMAMix: {
         "beta1": 0.99,

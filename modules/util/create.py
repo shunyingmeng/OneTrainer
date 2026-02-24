@@ -717,37 +717,47 @@ def create_optimizer(
 
         # PRODIGY_ADV Optimizer
         case Optimizer.PRODIGY_ADV:
-            from adv_optm import Prodigy_adv
-            optimizer = Prodigy_adv(
-                params=parameters,
-                lr=config.learning_rate,
-                betas=(optimizer_config.beta1 if optimizer_config.beta1 is not None else 0,
-                       optimizer_config.beta2 if optimizer_config.beta2 is not None else 0.99),
-                beta3=optimizer_config.beta3 if optimizer_config.beta3 is not None else None,
-                eps=optimizer_config.eps if optimizer_config.eps is not None else 1e-8,
-                weight_decay=optimizer_config.weight_decay if optimizer_config.weight_decay is not None else 0.0,
-                nnmf_factor=optimizer_config.nnmf_factor if optimizer_config.nnmf_factor is not None else False,
-                cautious_wd=optimizer_config.cautious_wd if optimizer_config.cautious_wd is not None else False,
-                stochastic_rounding=optimizer_config.stochastic_rounding,
-                d0=optimizer_config.d0 if optimizer_config.d0 is not None else 1e-6,
-                d_coef=optimizer_config.d_coef if optimizer_config.d_coef is not None else 1.0,
-                growth_rate=optimizer_config.growth_rate if optimizer_config.growth_rate is not None else float('inf'),
-                slice_p=optimizer_config.slice_p if optimizer_config.slice_p is not None else 1,
-                prodigy_steps=optimizer_config.prodigy_steps if optimizer_config.prodigy_steps is not None else 0,
-                d_limiter=optimizer_config.d_limiter if optimizer_config.d_limiter is not None else False,
-                use_atan2=optimizer_config.use_atan2 if optimizer_config.use_atan2 is not None else False,
-                cautious_mask=optimizer_config.cautious_mask if optimizer_config.cautious_mask is not None else False,
-                grams_moment=optimizer_config.grams_moment if optimizer_config.grams_moment is not None else False,
-                orthogonal_gradient=optimizer_config.orthogonal_gradient if optimizer_config.orthogonal_gradient is not None else False,
-                use_AdEMAMix=optimizer_config.use_AdEMAMix if optimizer_config.use_AdEMAMix is not None else False,
-                beta3_ema=optimizer_config.beta3_ema if optimizer_config.beta3_ema is not None else 0.9999,
-                alpha=optimizer_config.alpha if optimizer_config.alpha is not None else 5,
-                Simplified_AdEMAMix=optimizer_config.Simplified_AdEMAMix if optimizer_config.Simplified_AdEMAMix is not None else False,
-                alpha_grad=optimizer_config.alpha_grad if optimizer_config.alpha_grad is not None else 100,
-                kourkoutas_beta=optimizer_config.kourkoutas_beta if optimizer_config.kourkoutas_beta is not None else False,
-                k_warmup_steps=optimizer_config.k_warmup_steps if optimizer_config.k_warmup_steps is not None else 0,
-                compiled_optimizer=optimizer_config.compile if optimizer_config.compile is not None else False,
-            )
+            split = optimizer_config.split_groups if optimizer_config.split_groups is not None else False
+            prodigy_adv_kwargs = {
+                "params": parameters,
+                "lr": config.learning_rate,
+                "betas": (optimizer_config.beta1 if optimizer_config.beta1 is not None else 0,
+                          optimizer_config.beta2 if optimizer_config.beta2 is not None else 0.99),
+                "beta3": optimizer_config.beta3 if optimizer_config.beta3 is not None else None,
+                "eps": optimizer_config.eps if optimizer_config.eps is not None else 1e-8,
+                "weight_decay": optimizer_config.weight_decay if optimizer_config.weight_decay is not None else 0.0,
+                "nnmf_factor": optimizer_config.nnmf_factor if optimizer_config.nnmf_factor is not None else False,
+                "cautious_wd": optimizer_config.cautious_wd if optimizer_config.cautious_wd is not None else False,
+                "stochastic_rounding": optimizer_config.stochastic_rounding,
+                "d0": optimizer_config.d0 if optimizer_config.d0 is not None else 1e-6,
+                "d_coef": optimizer_config.d_coef if optimizer_config.d_coef is not None else 1.0,
+                "growth_rate": optimizer_config.growth_rate if optimizer_config.growth_rate is not None else float('inf'),
+                "slice_p": optimizer_config.slice_p if optimizer_config.slice_p is not None else 1,
+                "prodigy_steps": optimizer_config.prodigy_steps if optimizer_config.prodigy_steps is not None else 0,
+                "d_limiter": optimizer_config.d_limiter if optimizer_config.d_limiter is not None else False,
+                "use_atan2": optimizer_config.use_atan2 if optimizer_config.use_atan2 is not None else False,
+                "cautious_mask": optimizer_config.cautious_mask if optimizer_config.cautious_mask is not None else False,
+                "grams_moment": optimizer_config.grams_moment if optimizer_config.grams_moment is not None else False,
+                "orthogonal_gradient": optimizer_config.orthogonal_gradient if optimizer_config.orthogonal_gradient is not None else False,
+                "use_AdEMAMix": optimizer_config.use_AdEMAMix if optimizer_config.use_AdEMAMix is not None else False,
+                "beta3_ema": optimizer_config.beta3_ema if optimizer_config.beta3_ema is not None else 0.9999,
+                "alpha": optimizer_config.alpha if optimizer_config.alpha is not None else 5,
+                "Simplified_AdEMAMix": optimizer_config.Simplified_AdEMAMix if optimizer_config.Simplified_AdEMAMix is not None else False,
+                "alpha_grad": optimizer_config.alpha_grad if optimizer_config.alpha_grad is not None else 100,
+                "kourkoutas_beta": optimizer_config.kourkoutas_beta if optimizer_config.kourkoutas_beta is not None else False,
+                "k_warmup_steps": optimizer_config.k_warmup_steps if optimizer_config.k_warmup_steps is not None else 0,
+                "compiled_optimizer": optimizer_config.compile if optimizer_config.compile is not None else False,
+            }
+            if split:
+                from modules.util.optimizer.prodigy_adv_split import ProdigyAdvSplitGroups
+                optimizer = ProdigyAdvSplitGroups(
+                    **prodigy_adv_kwargs,
+                    split_groups=True,
+                    split_groups_mean=optimizer_config.split_groups_mean if optimizer_config.split_groups_mean is not None else False,
+                )
+            else:
+                from adv_optm import Prodigy_adv
+                optimizer = Prodigy_adv(**prodigy_adv_kwargs)
 
         # SIMPLIFIED_AdEMAMix Optimizer
         case Optimizer.SIMPLIFIED_AdEMAMix:
