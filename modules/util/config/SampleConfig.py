@@ -26,6 +26,8 @@ class SampleConfig(BaseConfig):
     text_encoder_4_layer_skip: int
     transformer_attention_mask: bool
     force_last_timestep: bool
+    timestep_shift: float
+    dynamic_timestep_shifting: bool
 
     sample_inpainting: bool
     base_image_path: str
@@ -43,6 +45,8 @@ class SampleConfig(BaseConfig):
         self.text_encoder_4_layer_skip = train_config.text_encoder_4_layer_skip
         self.transformer_attention_mask = train_config.transformer.attention_mask
         self.force_last_timestep = train_config.rescale_noise_scheduler_to_zero_terminal_snr
+        self.timestep_shift = train_config.timestep_shift
+        self.dynamic_timestep_shifting = train_config.dynamic_timestep_shifting
 
     @staticmethod
     def default_values():
@@ -69,6 +73,8 @@ class SampleConfig(BaseConfig):
         data.append(("text_encoder_4_layer_skip", 0, int, False))
         data.append(("transformer_attention_mask", False, bool, False))
         data.append(("force_last_timestep", False, bool, False))
+        data.append(("timestep_shift", 3.0, float, False))
+        data.append(("dynamic_timestep_shifting", True, bool, False))
 
         data.append(("sample_inpainting", False, bool, False))
         data.append(("base_image_path", "", str, False))

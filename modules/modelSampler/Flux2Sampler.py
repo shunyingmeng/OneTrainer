@@ -1,5 +1,6 @@
 import copy
 import inspect
+import math
 from collections.abc import Callable
 
 from modules.model.Flux2Model import Flux2Model
@@ -49,6 +50,8 @@ class Flux2Sampler(BaseModelSampler):
             cfg_scale: float,
             noise_scheduler: NoiseScheduler,
             text_encoder_sequence_length: int | None = None,
+            dynamic_timestep_shifting: bool = True,
+            timestep_shift: float = 3.0,
             on_update_progress: Callable[[int, int], None] = lambda _, __: None,
     ) -> ModelSamplerOutput:
         with self.model.autocast_context:
@@ -93,7 +96,10 @@ class Flux2Sampler(BaseModelSampler):
 
             latent_image = self.model.pack_latents(latent_image)
             image_seq_len = latent_image.shape[1]
-            mu = compute_empirical_mu(image_seq_len, diffusion_steps)
+            if dynamic_timestep_shifting:
+                mu = compute_empirical_mu(image_seq_len, diffusion_steps)
+            else:
+                mu = math.log(timestep_shift)
 
             # prepare timesteps
             #TODO for other models, too? This is different than with sigmas=None
@@ -181,6 +187,8 @@ class Flux2Sampler(BaseModelSampler):
             cfg_scale=sample_config.cfg_scale,
             noise_scheduler=sample_config.noise_scheduler,
             text_encoder_sequence_length=sample_config.text_encoder_1_sequence_length,
+            dynamic_timestep_shifting=sample_config.dynamic_timestep_shifting,
+            timestep_shift=sample_config.timestep_shift,
             on_update_progress=on_update_progress,
         )
 

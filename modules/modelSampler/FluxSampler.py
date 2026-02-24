@@ -53,6 +53,8 @@ class FluxSampler(BaseModelSampler):
             text_encoder_2_layer_skip: int = 0,
             text_encoder_2_sequence_length: int | None = None,
             transformer_attention_mask: bool = False,
+            dynamic_timestep_shifting: bool = True,
+            timestep_shift: float = 3.0,
             on_update_progress: Callable[[int, int], None] = lambda _, __: None,
     ) -> ModelSamplerOutput:
         with self.model.autocast_context:
@@ -99,7 +101,10 @@ class FluxSampler(BaseModelSampler):
                 self.model.train_dtype.torch_dtype()
             )
 
-            shift = self.model.calculate_timestep_shift(latent_image.shape[-2], latent_image.shape[-1])
+            if dynamic_timestep_shifting:
+                shift = self.model.calculate_timestep_shift(latent_image.shape[-2], latent_image.shape[-1])
+            else:
+                shift = timestep_shift
             latent_image = self.model.pack_latents(latent_image)
 
             # prepare timesteps
@@ -203,6 +208,8 @@ class FluxSampler(BaseModelSampler):
             text_encoder_2_layer_skip: int = 0,
             text_encoder_2_sequence_length: int | None = None,
             transformer_attention_mask: bool = False,
+            dynamic_timestep_shifting: bool = True,
+            timestep_shift: float = 3.0,
             on_update_progress: Callable[[int, int], None] = lambda _, __: None,
     ) -> ModelSamplerOutput:
         with self.model.autocast_context:
@@ -323,7 +330,10 @@ class FluxSampler(BaseModelSampler):
                 self.model.train_dtype.torch_dtype()
             )
 
-            shift = self.model.calculate_timestep_shift(latent_image.shape[-2], latent_image.shape[-1])
+            if dynamic_timestep_shifting:
+                shift = self.model.calculate_timestep_shift(latent_image.shape[-2], latent_image.shape[-1])
+            else:
+                shift = timestep_shift
             latent_image = self.model.pack_latents(latent_image)
             noise_scheduler.set_timesteps(diffusion_steps, device=self.train_device, mu=math.log(shift))
             timesteps = noise_scheduler.timesteps
@@ -424,6 +434,8 @@ class FluxSampler(BaseModelSampler):
                 text_encoder_2_layer_skip=sample_config.text_encoder_2_layer_skip,
                 text_encoder_2_sequence_length=sample_config.text_encoder_2_sequence_length,
                 transformer_attention_mask=sample_config.transformer_attention_mask,
+                dynamic_timestep_shifting=sample_config.dynamic_timestep_shifting,
+                timestep_shift=sample_config.timestep_shift,
                 on_update_progress=on_update_progress,
             )
         else:
@@ -441,6 +453,8 @@ class FluxSampler(BaseModelSampler):
                 text_encoder_2_layer_skip=sample_config.text_encoder_2_layer_skip,
                 text_encoder_2_sequence_length=sample_config.text_encoder_2_sequence_length,
                 transformer_attention_mask=sample_config.transformer_attention_mask,
+                dynamic_timestep_shifting=sample_config.dynamic_timestep_shifting,
+                timestep_shift=sample_config.timestep_shift,
                 on_update_progress=on_update_progress,
             )
 
