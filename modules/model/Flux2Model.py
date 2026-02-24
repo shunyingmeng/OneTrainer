@@ -261,20 +261,16 @@ class Flux2Model(BaseModel):
         batch_size, seq_len, num_channels = latents.shape
         return latents.reshape(batch_size, height, width, num_channels).permute(0, 3, 1, 2)
 
-    #inference code uses empirical mu. But that code cannot be used for training because it depends on num of inference steps, and is likely too high for training
-    #the dynamic shifting parameters of the noise schedulers are probably just the default values (taken from Flux1) and not applicable - but the best values we have:
     #unpatchified width and height
     def calculate_timestep_shift(self, latent_height: int, latent_width: int) -> float:
-        base_seq_len = self.noise_scheduler.config.base_image_seq_len
-        max_seq_len = self.noise_scheduler.config.max_image_seq_len
-        base_shift = self.noise_scheduler.config.base_shift
-        max_shift = self.noise_scheduler.config.max_shift
+        # BFL empirical mu coefficients from compute_empirical_mu (200-step/training limit).
+        # The 200-step values are used because training is analogous to a many-step process.
+        # Source: diffusers/pipelines/flux2/pipeline_flux2.py
+        a, b = 0.00016927, 0.45666666
         patch_size = 2
 
         image_seq_len = (latent_width // patch_size) * (latent_height // patch_size)
-        m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-        b = base_shift - m * base_seq_len
-        mu = image_seq_len * m + b
+        mu = a * image_seq_len + b
         return math.exp(mu)
 
     @staticmethod

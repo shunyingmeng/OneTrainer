@@ -1,5 +1,6 @@
 import copy
 import inspect
+import math
 from collections.abc import Callable
 
 from modules.model.ZImageModel import ZImageModel
@@ -85,7 +86,11 @@ class ZImageSampler(BaseModelSampler):
             )
 
             # prepare timesteps
-            noise_scheduler.set_timesteps(diffusion_steps, device=self.train_device)
+            shift = self.model.calculate_timestep_shift(
+                latent_image.shape[-1],
+                latent_image.shape[-2],
+            )
+            noise_scheduler.set_timesteps(diffusion_steps, device=self.train_device, mu=math.log(shift))
             timesteps = noise_scheduler.timesteps
 
             # denoising loop

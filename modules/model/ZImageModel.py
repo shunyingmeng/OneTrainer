@@ -178,16 +178,13 @@ class ZImageModel(BaseModel):
     def unscale_latents(self, latents: Tensor) -> Tensor:
         return latents / self.vae.config.scaling_factor + self.vae.config.shift_factor
 
-    def calculate_timestep_shift(self, latent_width: int, latent_height: int):
-        #these values are not defined in the scheduler config of Z-Image. They are therefore taken from the default of FlowMatchEulerDiscreteScheduler - which are Flux settings
-        base_seq_len = self.noise_scheduler.config.base_image_seq_len
-        max_seq_len = self.noise_scheduler.config.max_image_seq_len
-        base_shift = self.noise_scheduler.config.base_shift
-        max_shift = self.noise_scheduler.config.max_shift
+    def calculate_timestep_shift(self, latent_width: int, latent_height: int) -> float:
+        # Z-Image does not define its own shifting parameters.
+        # Use BFL empirical mu coefficients (200-step/training limit) as a reasonable default
+        # for flow matching models.
+        a, b = 0.00016927, 0.45666666
         patch_size = 2
 
         image_seq_len = (latent_width // patch_size) * (latent_height // patch_size)
-        m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-        b = base_shift - m * base_seq_len
-        mu = image_seq_len * m + b
+        mu = a * image_seq_len + b
         return math.exp(mu)
