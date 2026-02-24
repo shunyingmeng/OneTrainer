@@ -468,6 +468,7 @@ class TrainConfig(BaseConfig):
 
     # transformer
     transformer: TrainModelPartConfig
+    transformer_2: TrainModelPartConfig
     quantization: QuantizationConfig
 
     # text encoder
@@ -572,7 +573,7 @@ class TrainConfig(BaseConfig):
     def __init__(self, data: list[(str, Any, type, bool)]):
         super().__init__(
             data,
-            config_version=10,
+            config_version=11,
             config_migrations={
                 0: self.__migration_0,
                 1: self.__migration_1,
@@ -584,6 +585,7 @@ class TrainConfig(BaseConfig):
                 7: self.__migration_7,
                 8: self.__migration_8,
                 9: self.__migration_9,
+                10: self.__migration_10,
             }
         )
 
@@ -803,6 +805,26 @@ class TrainConfig(BaseConfig):
 
         return migrated_data
 
+    def __migration_10(self, data: dict) -> dict:
+        migrated_data = data.copy()
+
+        if "transformer_2" not in migrated_data:
+            migrated_data["transformer_2"] = {
+                "model_name": "",
+                "include": True,
+                "train": False,
+                "stop_training_after": 0,
+                "stop_training_after_unit": "NEVER",
+                "learning_rate": None,
+                "weight_dtype": "FLOAT_32",
+                "dropout_probability": 0.0,
+                "train_embedding": True,
+                "attention_mask": False,
+                "guidance_scale": 1.0,
+            }
+
+        return migrated_data
+
     def weight_dtypes(self) -> ModelWeightDtypes:
         return ModelWeightDtypes(
             self.train_dtype,
@@ -810,6 +832,7 @@ class TrainConfig(BaseConfig):
             self.unet.weight_dtype,
             self.prior.weight_dtype,
             self.transformer.weight_dtype,
+            self.transformer_2.weight_dtype,
             self.text_encoder.weight_dtype,
             self.text_encoder_2.weight_dtype,
             self.text_encoder_3.weight_dtype,
@@ -828,6 +851,7 @@ class TrainConfig(BaseConfig):
             base_model=self.base_model_name,
             prior_model=self.prior.model_name,
             transformer_model=self.transformer.model_name,
+            transformer_2_model=self.transformer_2.model_name,
             effnet_encoder_model=self.effnet_encoder.model_name,
             decoder_model=self.decoder.model_name,
             text_encoder_4=self.text_encoder_4.model_name,
@@ -1062,6 +1086,14 @@ class TrainConfig(BaseConfig):
         transformer.stop_training_after = 0
         transformer.learning_rate = None
         data.append(("transformer", transformer, TrainModelPartConfig, False))
+
+        # transformer 2
+        transformer_2 = TrainModelPartConfig.default_values()
+        transformer_2.model_name = ""
+        transformer_2.train = False
+        transformer_2.stop_training_after = 0
+        transformer_2.learning_rate = None
+        data.append(("transformer_2", transformer_2, TrainModelPartConfig, False))
 
         #quantization layer filter
         quantization = QuantizationConfig.default_values()

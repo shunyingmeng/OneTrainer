@@ -35,6 +35,8 @@ class ModelType(Enum):
 
     CHROMA_1 = 'CHROMA_1'
 
+    WAN_I2V_A14B = 'WAN_I2V_A14B'
+
     QWEN = 'QWEN'
 
     Z_IMAGE = 'Z_IMAGE'
@@ -104,6 +106,12 @@ class ModelType(Enum):
     def is_hi_dream(self):
         return self == ModelType.HI_DREAM_FULL
 
+    def is_wan(self):
+        return self == ModelType.WAN_I2V_A14B
+
+    def is_wan_i2v(self):
+        return self == ModelType.WAN_I2V_A14B
+
     def is_z_image(self):
         return self == ModelType.Z_IMAGE
 
@@ -151,6 +159,7 @@ class ModelType(Enum):
         return self.is_stable_diffusion_3() \
             or self.is_flux() \
             or self.is_chroma() \
+            or self.is_wan() \
             or self.is_qwen() \
             or self.is_sana() \
             or self.is_hunyuan_video() \

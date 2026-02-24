@@ -16,6 +16,7 @@ from diffusers.models.transformers.transformer_hidream_image import (
     HiDreamImageSingleTransformerBlock,
     HiDreamImageTransformerBlock,
 )
+from diffusers.models.transformers.transformer_wan import WanTransformerBlock
 from diffusers.models.transformers.transformer_hunyuan_video import (
     HunyuanVideoIndividualTokenRefinerBlock,
     HunyuanVideoSingleTransformerBlock,
@@ -412,4 +413,12 @@ def enable_checkpointing_for_hi_dream_transformer(
     return enable_checkpointing(model, config, config.compile, [
         (HiDreamImageTransformerBlock,       ["hidden_states", "encoder_hidden_states"]),
         (HiDreamImageSingleTransformerBlock, ["hidden_states"                         ]),
+    ])
+
+def enable_checkpointing_for_wan_transformer(
+        model: nn.Module,
+        config: TrainConfig,
+) -> LayerOffloadConductor:
+    return enable_checkpointing(model, config, config.compile, [
+        (WanTransformerBlock, ["hidden_states"]),
     ])

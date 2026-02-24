@@ -1,0 +1,52 @@
+{
+    "base_model_name": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+    "batch_size": 1,
+    "learning_rate": 1e-4,
+    "model_type": "WAN_I2V_A14B",
+    "resolution": "720",
+    "gradient_checkpointing": "CPU_OFFLOADED",
+    "layer_offload_fraction": 0.5,
+    "training_method": "LORA",
+    "transformer": {
+        "train": true,
+        "weight_dtype": "BFLOAT_16"
+    },
+    "transformer_2": {
+        "train": true,
+        "weight_dtype": "BFLOAT_16"
+    },
+    "text_encoder": {
+        "train": false,
+        "weight_dtype": "BFLOAT_16"
+    },
+    "vae": {
+        "weight_dtype": "FLOAT_32"
+    },
+    "train_dtype": "BFLOAT_16",
+    "output_dtype": "BFLOAT_16",
+    "output_model_format": "SAFETENSORS",
+    "output_model_destination": "models/wan_lora.safetensors",
+    "timestep_distribution": "LOGIT_NORMAL",
+    "dynamic_timestep_shifting": true,
+    "noising_weight": 7.7,
+    "cep_enabled": true,
+    "cep_gamma": 0.1,
+    "optimizer": {
+        "optimizer": "PRODIGY_ADV"
+    },
+    "optimizer_defaults": {
+        "PRODIGY_ADV": {
+            "optimizer": "PRODIGY_ADV",
+            "learning_rate": 1.0,
+            "weight_decay": 0.01,
+            "beta1": 0.9,
+            "beta2": 0.99,
+            "d_coef": 1.0,
+            "growth_rate": 1.02,
+            "use_bias_correction": true,
+            "safeguard_warmup": true,
+            "fused_back_pass": true,
+            "stochastic_rounding": true
+        }
+    }
+}
