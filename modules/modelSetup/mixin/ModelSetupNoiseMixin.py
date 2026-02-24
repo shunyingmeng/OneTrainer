@@ -15,6 +15,7 @@ class ModelSetupNoiseMixin(metaclass=ABCMeta):
 
         self.__weights = None
         self._offset_noise_psi_schedule: Tensor | None = None
+        self._deterministic_timestep_fraction: float = 0.5
 
     def _compute_and_cache_offset_noise_psi_schedule(self, betas: Tensor) -> Tensor:
         """
@@ -168,7 +169,7 @@ class ModelSetupNoiseMixin(metaclass=ABCMeta):
         if deterministic:
             # -1 is for zero-based indexing
             return torch.tensor(
-                int(num_train_timesteps * 0.5) - 1,
+                int(num_train_timesteps * self._deterministic_timestep_fraction) - 1,
                 dtype=torch.long,
                 device=generator.device,
             ).unsqueeze(0)
@@ -256,7 +257,7 @@ class ModelSetupNoiseMixin(metaclass=ABCMeta):
         if deterministic:
             return torch.full(
                 size=(batch_size,),
-                fill_value=0.5,
+                fill_value=self._deterministic_timestep_fraction,
                 device=generator.device,
             )
         else:

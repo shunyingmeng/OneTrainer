@@ -343,75 +343,92 @@ class GenericTrainer(BaseTrainer):
 
     def __validate(self, train_progress: TrainProgress):
         if self.__needs_validate(train_progress):
-            self.validation_data_loader.get_data_set().start_next_epoch()
             current_epoch_length_validation = self.validation_data_loader.get_data_set().approximate_length()
 
             if current_epoch_length_validation == 0:
                 return
 
-            self.callbacks.on_update_status("Calculating validation loss")
             self.model_setup.setup_train_device(self.model, self.config)
 
-            torch_gc()
+            validation_levels = [
+                ("high", 0.85),
+                ("mid", 0.5),
+                ("low", 0.15),
+            ]
 
-            step_tqdm_validation = tqdm(
-                self.validation_data_loader.get_data_loader(),
-                desc="validation_step",
-                total=current_epoch_length_validation)
+            for level_name, timestep_fraction in validation_levels:
+                self.callbacks.on_update_status(f"Calculating validation loss ({level_name})")
 
-            accumulated_loss_per_concept = {}
-            concept_counts = {}
-            mapping_seed_to_label = {}
-            mapping_label_to_seed = {}
+                torch_gc()
 
-            for validation_batch in step_tqdm_validation:
-                if self.__needs_gc(train_progress):
-                    torch_gc()
+                self.validation_data_loader.get_data_set().start_next_epoch()
+                step_tqdm_validation = tqdm(
+                    self.validation_data_loader.get_data_loader(),
+                    desc=f"validation_{level_name}",
+                    total=current_epoch_length_validation)
 
-                with torch.no_grad():
-                    model_output_data = self.model_setup.predict(
-                        self.model, validation_batch, self.config, train_progress, deterministic=True)
-                    loss_validation = self.model_setup.calculate_loss(
-                        self.model, validation_batch, model_output_data, self.config)
+                self.model_setup._deterministic_timestep_fraction = timestep_fraction
 
-                # since validation batch size = 1
-                concept_name = validation_batch["concept_name"][0]
-                concept_path = validation_batch["concept_path"][0]
-                concept_seed = validation_batch["concept_seed"].item()
-                loss = loss_validation.item()
+                accumulated_loss_per_concept = {}
+                concept_counts = {}
+                mapping_seed_to_label = {}
+                mapping_label_to_seed = {}
 
-                label = concept_name if concept_name else os.path.basename(concept_path)
-                # check and fix collision to display both graphs in tensorboard
-                if label in mapping_label_to_seed and mapping_label_to_seed[label] != concept_seed:
-                    suffix = 1
-                    new_label = f"{label}({suffix})"
-                    while new_label in mapping_label_to_seed and mapping_label_to_seed[new_label] != concept_seed:
-                        suffix += 1
+                for validation_batch in step_tqdm_validation:
+                    if self.__needs_gc(train_progress):
+                        torch_gc()
+
+                    with torch.no_grad():
+                        model_output_data = self.model_setup.predict(
+                            self.model, validation_batch, self.config, train_progress, deterministic=True)
+                        loss_validation = self.model_setup.calculate_loss(
+                            self.model, validation_batch, model_output_data, self.config)
+
+                    # since validation batch size = 1
+                    concept_name = validation_batch["concept_name"][0]
+                    concept_path = validation_batch["concept_path"][0]
+                    concept_seed = validation_batch["concept_seed"].item()
+                    loss = loss_validation.item()
+
+                    label = concept_name if concept_name else os.path.basename(concept_path)
+                    # check and fix collision to display both graphs in tensorboard
+                    if label in mapping_label_to_seed and mapping_label_to_seed[label] != concept_seed:
+                        suffix = 1
                         new_label = f"{label}({suffix})"
-                    label = new_label
+                        while new_label in mapping_label_to_seed and mapping_label_to_seed[new_label] != concept_seed:
+                            suffix += 1
+                            new_label = f"{label}({suffix})"
+                        label = new_label
 
-                if concept_seed not in mapping_seed_to_label:
-                    mapping_seed_to_label[concept_seed] = label
-                    mapping_label_to_seed[label] = concept_seed
+                    if concept_seed not in mapping_seed_to_label:
+                        mapping_seed_to_label[concept_seed] = label
+                        mapping_label_to_seed[label] = concept_seed
 
-                accumulated_loss_per_concept[concept_seed] = accumulated_loss_per_concept.get(concept_seed, 0) + loss
-                concept_counts[concept_seed] = concept_counts.get(concept_seed, 0) + 1
+                    accumulated_loss_per_concept[concept_seed] = accumulated_loss_per_concept.get(concept_seed, 0) + loss
+                    concept_counts[concept_seed] = concept_counts.get(concept_seed, 0) + 1
 
-            for concept_seed, total_loss in accumulated_loss_per_concept.items():
-                average_loss = total_loss / concept_counts[concept_seed]
+                for concept_seed, total_loss in accumulated_loss_per_concept.items():
+                    average_loss = total_loss / concept_counts[concept_seed]
 
-                self.tensorboard.add_scalar(f"loss/validation_step/{mapping_seed_to_label[concept_seed]}",
-                                            average_loss,
-                                            train_progress.global_step)
+                    self.tensorboard.add_scalar(
+                        f"loss/validation_{level_name}/{mapping_seed_to_label[concept_seed]}",
+                        average_loss,
+                        train_progress.global_step,
+                    )
 
-            if len(concept_counts) > 1:
-                total_loss = sum(accumulated_loss_per_concept[key] for key in concept_counts)
-                total_count = sum(concept_counts[key] for key in concept_counts)
-                total_average_loss = total_loss / total_count
+                if len(concept_counts) > 1:
+                    total_loss = sum(accumulated_loss_per_concept[key] for key in concept_counts)
+                    total_count = sum(concept_counts[key] for key in concept_counts)
+                    total_average_loss = total_loss / total_count
 
-                self.tensorboard.add_scalar("loss/validation_step/total_average",
-                                            total_average_loss,
-                                            train_progress.global_step)
+                    self.tensorboard.add_scalar(
+                        f"loss/validation_{level_name}/total_average",
+                        total_average_loss,
+                        train_progress.global_step,
+                    )
+
+            # reset to default
+            self.model_setup._deterministic_timestep_fraction = 0.5
 
     def __save_backup_config(self, backup_path):
         config_path = os.path.join(backup_path, "onetrainer_config")
