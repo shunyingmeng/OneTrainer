@@ -113,10 +113,10 @@ The `training_configs/` folder contains working config JSONs for quick smoke-tes
 |------|-------|-------|
 | `chroma.json` | Chroma-HD (CHROMA_1) | dynamic_timestep_shifting=true |
 | `klein.json` | FLUX.2 Klein 9B (FLUX_2) | |
-| `illustrious.json` | Illustrious XL (SDXL) | Trains UNet + TE1 + TE2 |
+| `illustrious.json` | Illustrious XL (SDXL) | PPSF optimizer, trains UNet + TE1 + TE2 |
 | `zimage.json` | Z-Image | Regex layer filter |
 
-All use PRODIGY_ADV optimizer with LoRA training and `split_groups: true`.
+All use LoRA training with `split_groups: true`. Most use PRODIGY_ADV; `illustrious.json` uses PRODIGY_PLUS_SCHEDULE_FREE.
 
 **IMPORTANT: Any changes to files in `training_configs/` must be reviewed and approved by the user.** Do not modify these configs without explicit confirmation — they are known-good baselines for testing.
 
