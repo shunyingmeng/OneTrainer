@@ -244,7 +244,7 @@ class ModelSetupNoiseMixin(metaclass=ABCMeta):
                 samples = torch.multinomial(self.__weights, num_samples=batch_size, replacement=True, generator=generator) + min_timestep
                 timestep = samples.to(dtype=torch.long, device=generator.device)
 
-            return timestep.int()
+            return timestep.clamp(0, num_train_timesteps - 1).int()
 
     def _get_timestep_continuous(
             self,

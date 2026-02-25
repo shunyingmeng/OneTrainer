@@ -97,7 +97,9 @@ class BaseWanSetup(
         if model.transformer_2 is not None:
             quantize_layers(model.transformer_2, self.train_device, model.train_dtype, config)
 
-        model.vae.enable_tiling()
+        # Note: VAE tiling is not enabled here because the WAN VAE's feature caching
+        # is not thread-safe with the concurrent DiskCache encoding pipeline.
+        # For single-image encoding during training, tiling is unnecessary.
 
     def _setup_embeddings(
             self,
@@ -295,12 +297,16 @@ class BaseWanSetup(
 
             num_train_timesteps = model.noise_scheduler.config['num_train_timesteps']
 
+            shift = model.calculate_timestep_shift(
+                scaled_latent_image.shape[-2], scaled_latent_image.shape[-1],
+            )
             timestep = self._get_timestep_discrete(
                 num_train_timesteps,
                 deterministic,
                 generator,
                 scaled_latent_image.shape[0],
                 config,
+                shift=shift if config.dynamic_timestep_shifting else config.timestep_shift,
             )
 
             scaled_noisy_latent_image, sigma = self._add_noise_discrete(

@@ -1,5 +1,3 @@
-import copy
-import inspect
 from collections.abc import Callable
 
 from modules.model.WanModel import WanModel
@@ -12,11 +10,12 @@ from modules.util.enum.ImageFormat import ImageFormat
 from modules.util.enum.ModelType import ModelType
 from modules.util.enum.NoiseScheduler import NoiseScheduler
 from modules.util.enum.VideoFormat import VideoFormat
+from modules.util.image_util import load_image
 from modules.util.torch_util import torch_gc
 
 import torch
-
-from tqdm import tqdm
+import numpy as np
+from PIL import Image
 
 
 class WanSampler(BaseModelSampler):
@@ -45,163 +44,90 @@ class WanSampler(BaseModelSampler):
             diffusion_steps: int,
             cfg_scale: float,
             noise_scheduler: NoiseScheduler,
+            base_image_path: str = "",
             text_encoder_layer_skip: int = 0,
             on_update_progress: Callable[[int, int], None] = lambda _, __: None,
     ) -> ModelSamplerOutput:
-        with self.model.autocast_context:
-            generator = torch.Generator(device=self.train_device)
-            if random_seed:
-                generator.seed()
+        generator = torch.Generator(device=self.train_device)
+        if random_seed:
+            generator.seed()
+        else:
+            generator.manual_seed(seed)
+
+        pipe = self.pipeline
+
+        # Load reference image for I2V conditioning
+        if base_image_path:
+            ref_image = load_image(base_image_path, convert_mode="RGB")
+        else:
+            print("WARNING: No base_image_path set for WAN I2V sampling. "
+                  "Set base_image_path in sample config for proper results.")
+            # Create a blank image as fallback
+            ref_image = Image.new("RGB", (width, height), (128, 128, 128))
+
+        # Apply correct flow_shift to the scheduler
+        flow_shift = self.model.noise_scheduler.config.get('flow_shift', 3.0)
+        if hasattr(pipe.scheduler, 'set_shift'):
+            pipe.scheduler.set_shift(flow_shift)
+
+        # Move all models to train device for sampling
+        self.model.text_encoder_to(self.train_device)
+        self.model.transformer_to(self.train_device)
+        if self.model.transformer_2 is not None:
+            self.model.transformer_2_to(self.train_device)
+        self.model.vae_to(self.train_device)
+
+        # Use the official pipeline for sampling
+        result = pipe(
+            image=ref_image,
+            prompt=prompt,
+            negative_prompt=negative_prompt if cfg_scale > 1.0 else None,
+            height=height,
+            width=width,
+            num_frames=1,
+            num_inference_steps=diffusion_steps,
+            guidance_scale=cfg_scale,
+            generator=generator,
+            output_type="np",
+        )
+
+        # Extract the single frame from the video output
+        frames = result.frames
+        if isinstance(frames, list) and len(frames) > 0:
+            if isinstance(frames[0], list):
+                frame = frames[0][0]
             else:
-                generator.manual_seed(seed)
+                frame = frames[0]
+        else:
+            frame = frames
 
-            noise_scheduler = copy.deepcopy(self.model.noise_scheduler)
-            transformer = self.pipeline.transformer
-            transformer_2 = self.pipeline.transformer_2
-            vae = self.pipeline.vae
-
-            num_channels_latents = 16
-            vae_scale_factor_spatial = vae.config.scale_factor_spatial  # 8
-            vae_scale_factor_temporal = vae.config.scale_factor_temporal  # 4
-
-            # For image-only sampling, use a single frame
-            num_frames = 1
-            num_latent_frames = 1
-
-            latent_height = height // vae_scale_factor_spatial
-            latent_width = width // vae_scale_factor_spatial
-
-            # VAE normalization params
-            latents_mean = (
-                torch.tensor(vae.config.latents_mean)
-                .view(1, vae.config.z_dim, 1, 1, 1)
-                .to(self.train_device, dtype=self.model.train_dtype.torch_dtype())
-            )
-            latents_std = (
-                1.0 / torch.tensor(vae.config.latents_std)
-                .view(1, vae.config.z_dim, 1, 1, 1)
-                .to(self.train_device, dtype=self.model.train_dtype.torch_dtype())
-            )
-
-            # Encode text
-            self.model.text_encoder_to(self.train_device)
-
-            text_encoder_output, text_attention_mask = self.model.encode_text(
-                text=prompt,
-                batch_size=1,
-                train_device=self.train_device,
-                text_encoder_layer_skip=text_encoder_layer_skip,
-            )
-
-            if cfg_scale > 1.0 and negative_prompt:
-                negative_text_encoder_output, negative_text_attention_mask = self.model.encode_text(
-                    text=negative_prompt,
-                    batch_size=1,
-                    train_device=self.train_device,
-                    text_encoder_layer_skip=text_encoder_layer_skip,
-                )
+        # Convert numpy array to PIL Image
+        if isinstance(frame, np.ndarray):
+            # Handle video dimensions: (1, H, W, 3) or (H, W, 3)
+            while frame.ndim > 3:
+                frame = frame[0]
+            if frame.max() <= 1.0:
+                frame = (frame * 255).astype(np.uint8)
             else:
-                negative_text_encoder_output = None
+                frame = frame.astype(np.uint8)
+            image = Image.fromarray(frame)
+        elif isinstance(frame, Image.Image):
+            image = frame
+        else:
+            raise ValueError(f"Unexpected frame type: {type(frame)}")
 
-            self.model.text_encoder_to(self.temp_device)
-            torch_gc()
+        # Move models back to temp device
+        self.model.text_encoder_to(self.temp_device)
+        self.model.transformer_to(self.temp_device)
+        if self.model.transformer_2 is not None:
+            self.model.transformer_2_to(self.temp_device)
+        self.model.vae_to(self.temp_device)
+        torch_gc()
 
-            # Prepare latent noise (B, C, T, H, W)
-            latent_image = torch.randn(
-                size=(1, num_channels_latents, num_latent_frames, latent_height, latent_width),
-                generator=generator,
-                device=self.train_device,
-                dtype=torch.float32,
-            )
-
-            # For I2V with a single image, we create a blank conditioning
-            # (since there's no input image for sampling, use zeros)
-            condition = torch.zeros(
-                1, vae_scale_factor_temporal + num_channels_latents,
-                num_latent_frames, latent_height, latent_width,
-                device=self.train_device,
-                dtype=self.model.train_dtype.torch_dtype(),
-            )
-
-            noise_scheduler.set_timesteps(diffusion_steps, device=self.train_device)
-            timesteps = noise_scheduler.timesteps
-
-            boundary_timestep = None
-            if transformer_2 is not None:
-                num_train_timesteps = noise_scheduler.config.get('num_train_timesteps', 1000)
-                boundary_timestep = 0.9 * num_train_timesteps
-
-            self.model.transformer_to(self.train_device)
-            if transformer_2 is not None:
-                self.model.transformer_2_to(self.train_device)
-
-            for i, timestep in enumerate(tqdm(timesteps, desc="sampling")):
-                # Route to transformer based on timestep
-                if boundary_timestep is not None and timestep < boundary_timestep:
-                    current_model = transformer_2
-                else:
-                    current_model = transformer
-
-                # Concatenate latent with condition (36ch input)
-                latent_model_input = torch.cat([latent_image, condition], dim=1)
-
-                noise_pred = current_model(
-                    hidden_states=latent_model_input.to(dtype=self.model.train_dtype.torch_dtype()),
-                    timestep=timestep.expand(1),
-                    encoder_hidden_states=text_encoder_output.to(dtype=self.model.train_dtype.torch_dtype()),
-                    return_dict=False,
-                )[0]
-
-                if negative_text_encoder_output is not None and cfg_scale > 1.0:
-                    noise_pred_uncond = current_model(
-                        hidden_states=latent_model_input.to(dtype=self.model.train_dtype.torch_dtype()),
-                        timestep=timestep.expand(1),
-                        encoder_hidden_states=negative_text_encoder_output.to(dtype=self.model.train_dtype.torch_dtype()),
-                        return_dict=False,
-                    )[0]
-                    noise_pred = noise_pred_uncond + cfg_scale * (noise_pred - noise_pred_uncond)
-
-                latent_image = noise_scheduler.step(
-                    noise_pred, timestep, latent_image, return_dict=False
-                )[0]
-
-                on_update_progress(i + 1, len(timesteps))
-
-            self.model.transformer_to(self.temp_device)
-            if transformer_2 is not None:
-                self.model.transformer_2_to(self.temp_device)
-            torch_gc()
-
-            # Decode
-            self.model.vae_to(self.train_device)
-
-            # WAN VAE denormalization: latent / std + mean
-            latent_image = latent_image.to(vae.dtype)
-            latent_image = latent_image / latents_std.to(latent_image.dtype) + latents_mean.to(latent_image.dtype)
-
-            image = vae.decode(latent_image, return_dict=False)[0]
-
-            # Convert from video format (B, C, T, H, W) to image
-            if image.ndim == 5:
-                image = image[:, :, 0, :, :]  # Take first frame
-
-            # Normalize to [0, 1]
-            image = (image + 1.0) / 2.0
-            image = image.clamp(0, 1)
-
-            # Convert to PIL
-            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-            from PIL import Image
-            import numpy as np
-            image = Image.fromarray((image[0] * 255).astype(np.uint8))
-
-            self.model.vae_to(self.temp_device)
-            torch_gc()
-
-            return ModelSamplerOutput(
-                file_type=FileType.IMAGE,
-                data=image,
-            )
+        return ModelSamplerOutput(
+            file_type=FileType.IMAGE,
+            data=image,
+        )
 
     def sample(
             self,
@@ -223,6 +149,7 @@ class WanSampler(BaseModelSampler):
             diffusion_steps=sample_config.diffusion_steps,
             cfg_scale=sample_config.cfg_scale,
             noise_scheduler=sample_config.noise_scheduler,
+            base_image_path=sample_config.base_image_path,
             text_encoder_layer_skip=sample_config.text_encoder_1_layer_skip,
             on_update_progress=on_update_progress,
         )

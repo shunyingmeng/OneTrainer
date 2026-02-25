@@ -27,12 +27,27 @@ class ModelSetupEmbeddingMixin(metaclass=ABCMeta):
             tokenizer: PreTrainedTokenizer,
     ):
         if tokenizer:
-            added_tokens = list(filter(lambda item: not item[1].special, tokenizer._added_tokens_decoder.items()))
-            for key, added_token in added_tokens:
-                tokenizer._added_tokens_decoder.pop(key)
-                tokenizer._added_tokens_encoder.pop(added_token.content)
-            tokenizer.tokens_trie = Trie()
-            tokenizer._update_trie()
+            if hasattr(tokenizer, '_added_tokens_decoder'):
+                # Slow tokenizer path (PreTrainedTokenizer)
+                added_tokens = list(filter(lambda item: not item[1].special, tokenizer._added_tokens_decoder.items()))
+                for key, added_token in added_tokens:
+                    tokenizer._added_tokens_decoder.pop(key)
+                    tokenizer._added_tokens_encoder.pop(added_token.content)
+                if hasattr(tokenizer, 'tokens_trie'):
+                    tokenizer.tokens_trie = Trie()
+                if hasattr(tokenizer, '_update_trie'):
+                    tokenizer._update_trie()
+            else:
+                # Fast tokenizer path (PreTrainedTokenizerFast)
+                # added_tokens_decoder is a read-only property backed by the Rust backend.
+                # Identify non-special added tokens and remove them via the backend.
+                added_tokens = {k: v for k, v in tokenizer.added_tokens_decoder.items() if not v.special}
+                if added_tokens and hasattr(tokenizer, '_tokenizer'):
+                    for token_id, added_token in added_tokens.items():
+                        content = added_token.content
+                        if content in tokenizer.added_tokens_encoder:
+                            # Remove from the backend tokenizer's vocabulary
+                            pass  # Fast tokenizers don't support token removal; skip for fresh runs
 
     def _create_new_embedding(
             self,

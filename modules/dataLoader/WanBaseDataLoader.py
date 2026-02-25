@@ -34,7 +34,7 @@ class WanBaseDataLoader(
         image_sample = SampleVAEDistribution(in_name='latent_image_distribution', out_name='latent_image', mode='mean')
         downscale_mask = ScaleImage(in_name='mask', out_name='latent_mask', factor=0.125)
         add_embeddings_to_prompt = MapData(in_name='prompt', out_name='prompt', map_fn=model.add_text_encoder_embeddings_to_prompt)
-        tokenize_prompt = Tokenize(in_name='prompt', tokens_out_name='tokens', mask_out_name='tokens_mask', tokenizer=model.tokenizer, max_token_length=model.tokenizer.model_max_length, expand_mask=1)
+        tokenize_prompt = Tokenize(in_name='prompt', tokens_out_name='tokens', mask_out_name='tokens_mask', tokenizer=model.tokenizer, max_token_length=config.text_encoder_sequence_length, expand_mask=1)
         encode_prompt = EncodeT5Text(tokens_in_name='tokens', tokens_attention_mask_in_name="tokens_mask", hidden_state_out_name='text_encoder_hidden_state', pooled_out_name=None, add_layer_norm=True,
                                      text_encoder=model.text_encoder, hidden_state_output_index=-(1 + config.text_encoder_layer_skip), autocast_contexts=[model.autocast_context, model.text_encoder_autocast_context],
                                      dtype=model.text_encoder_train_dtype.torch_dtype())

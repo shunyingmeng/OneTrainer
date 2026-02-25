@@ -28,9 +28,9 @@
     "output_model_destination": "models/wan_lora.safetensors",
     "timestep_distribution": "LOGIT_NORMAL",
     "dynamic_timestep_shifting": true,
-    "noising_weight": 7.7,
+    "noising_weight": 1.0,
     "cep_enabled": true,
-    "cep_gamma": 0.1,
+    "cep_gamma": 1.0,
     "optimizer": {
         "optimizer": "PRODIGY_ADV"
     },

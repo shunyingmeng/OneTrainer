@@ -39,6 +39,15 @@ class WanModelEmbedding:
 
 
 class WanModel(BaseModel):
+    # WAN 2.2 official reference points for timestep shift:
+    #   480p (latent ~60x107 = 6420 area) → sample_shift=3.0
+    #   720p (latent ~90x160 = 14400 area) → sample_shift=5.0
+    # Source: Wan-Video/Wan2.2 wan/configs/wan_i2v_A14B.py + generate.py
+    _SHIFT_BASE_AREA = 6420
+    _SHIFT_MAX_AREA = 14400
+    _SHIFT_BASE = 3.0
+    _SHIFT_MAX = 5.0
+
     # base model data
     tokenizer: AutoTokenizer | None
     noise_scheduler: FlowMatchEulerDiscreteScheduler | None
@@ -105,6 +114,19 @@ class WanModel(BaseModel):
             self.transformer_lora,
             self.transformer_2_lora,
         ] if a is not None]
+
+    def calculate_timestep_shift(self, latent_height: int, latent_width: int) -> float:
+        """
+        Compute resolution-dependent timestep shift for WAN 2.2.
+
+        Uses linear interpolation on latent spatial area, calibrated to the
+        official WAN 2.2 I2V-A14B shift values (480p→3.0, 720p→5.0).
+        Extrapolates linearly for resolutions beyond the reference range.
+        """
+        latent_area = latent_height * latent_width
+        shift = self._SHIFT_BASE + (latent_area - self._SHIFT_BASE_AREA) * \
+            (self._SHIFT_MAX - self._SHIFT_BASE) / (self._SHIFT_MAX_AREA - self._SHIFT_BASE_AREA)
+        return max(shift, 1.0)
 
     def all_embeddings(self) -> list[WanModelEmbedding]:
         return self.additional_embeddings \

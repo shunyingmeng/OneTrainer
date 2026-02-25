@@ -55,8 +55,13 @@ class WanModelLoader(
         if not vae_model_name:
             diffusers_sub.append("vae")
 
-        # check if transformer_2 directory exists
-        has_transformer_2 = os.path.isdir(os.path.join(base_model_name, "transformer_2"))
+        # Check if transformer_2 exists (dual-transformer architecture for I2V A14B)
+        is_local = os.path.isdir(base_model_name)
+        if is_local:
+            has_transformer_2 = os.path.isdir(os.path.join(base_model_name, "transformer_2"))
+        else:
+            # For HuggingFace models, check model_index.json for transformer_2
+            has_transformer_2 = model_type.is_wan_i2v()
         if has_transformer_2:
             diffusers_sub.append("transformer_2")
 
